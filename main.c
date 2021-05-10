@@ -12,11 +12,15 @@
 #include "simAVRHeader.h"
 #endif
 
-enum SM1_States { SM1_Start, SM1_ON, SM1_OFF, SM1_Wait} SM1_State;
-enum SM2_States { SM2_Start, SM2_Up, SM2_Down} SM2_State;
+enum SM1_States { SM1_Start, SM1_ON, SM1_Wait1, SM1_Wait2} SM1_State;
+enum SM2_States { SM2_Start, SM2_Up, SM2_Down, SM2_WaitUp, SM2_WaitDown, SM2_Wait} SM2_State;
 static unsigned button1 = 0x00;
 static unsigned button2 = 0x00;
 static unsigned button3 = 0x00;
+
+static int currVal = 0;
+static double noteArray[8] = {261.63, 293.63, 329.63, 349.23, 392.00, 440.00, 493.33, 523.25};
+
 
 void set_PWM(double frequency) {
 	static double current_frequency;
@@ -48,7 +52,7 @@ void PWM_on () {
 
 	TCCR3B = (1 << WGM32);
 
-	set_PWM(0);
+	set_PWM(noteArray[currVal]);
 
 }
 void PWM_off () {
@@ -60,33 +64,44 @@ void PWM_off () {
 void OnOff() {
 	switch (SM1_State) { 
 		case SM1_Start:
-			if (button1) {
+			if (button1 && (!button2 && !button3)) {
 				SM1_State = SM1_ON;
 			}
 
-			else {
-				SM1_State = SM1_OFF;
+			else if (!button1) {
+				SM1_State = SM1_Start;
 			}
 
 			break;
 
 		case SM1_ON:
-			SM1_State = SM1_Wait;
+			SM1_State = SM1_Wait1;
 			break;
 
-		case SM1_OFF:
+		case SM1_Wait1:
+			if (!button1) {
+				SM1_State = SM1_Wait2;
+			}
+
+			else if (button1) {
+				SM1_State = SM1_Wait1;
+			}
+
+			break;
+
+		case SM1_Wait2:
+			if(button1) {
+				SM1_State = SM1_Start;
+			}
+
+			else if (!button1) {
+				SM1_State = SM1_Wait2;
+			}
+
+			break;
+
+		default:
 			SM1_State = SM1_Start;
-			break;
-
-		case SM1_Wait:
-			if (button1) {
-				SM1_State = SM1_OFF;
-			}
-
-			else {
-				SM1_State = SM1_Wait;
-			}
-
 			break;
 	}
 
@@ -100,11 +115,10 @@ void OnOff() {
 			PWM_on();
 			break;
 
-		case SM1_OFF:
+		case SM1_Wait1:
 			break;
 
-		case SM1_Wait:
-			PWM_off();
+		case SM1_Wait2:
 			break;
 
 
@@ -113,10 +127,9 @@ void OnOff() {
 
 }
 
-
 void UpDown() {
-	double noteArray [8] = {261.63, 293.66, 329.63, 349.23, 392.00, 440.00,493.33, 523.25};
-	static int currVal = 0;
+//	static double noteArray [8] = {261.63, 293.66, 329.63, 349.23, 392.00, 440.00,493.33, 523.25};
+//	static int currVal = 0;
 
 	switch (SM2_State) {
 		case SM2_Start:
@@ -135,27 +148,58 @@ void UpDown() {
 			break;
 
 		case SM2_Up:
+
+			SM2_State = SM2_WaitUp;
+			break;
+
+		case SM2_Down:
+
+			SM2_State = SM2_WaitDown;
+			break;
+
+
+		case SM2_WaitUp:
+
+			if (button2) {
+				SM2_State = SM2_WaitUp;
+			}
+
+			else if (!button2) {
+				SM2_State = SM2_Wait;
+			}
 			
+			break;
+
+		case SM2_WaitDown:
+
+			if (button3) {
+				SM2_State = SM2_WaitDown;
+			}
+
+			else if (!button2) {
+				SM2_State = SM2_Wait;
+			}
+
+			break;
+
+		case SM2_Wait:
+
 			if (button2) {
 				SM2_State = SM2_Up;
 			}
-
 
 			else if (button3) {
 				SM2_State = SM2_Down;
 			}
 
+			else {
+				SM2_State = SM2_Wait;
+			}
 
 			break;
 
-		case SM2_Down:
-			if (button3) {
-				SM2_State = SM2_Down;
-			}
-
-			else if (button2) {
-				SM2_State = SM2_Up;
-			}
+		default:
+			SM2_State = SM2_Start;
 
 			break;
 
@@ -164,8 +208,7 @@ void UpDown() {
 
 	switch (SM2_State) {
 		case SM2_Start:
-			currVal = 0;
-			set_PWM(noteArray[currVal]);
+			currVal = -1;
 			break;
 
 		case SM2_Up:
@@ -175,29 +218,31 @@ void UpDown() {
 
 			}
 
-			else {
-				currVal = currVal;
-				set_PWM(noteArray[currVal]);
-			}
 
 			break;
 
 		case SM2_Down:
-			if (currVal > 1) {
+			if (currVal > 0) {
 				currVal = currVal - 1;
-				set_PWM(noteArray[currVal]);
-			}
-
-			else {
-				currVal = currVal;
 				set_PWM(noteArray[currVal]);
 			}
 
 			break;
 
+		case SM2_WaitUp:
+			break;
+
+		case SM2_WaitDown:
+			break;
+
+		case SM2_Wait:
+			break;
+
+
 	}
 			
 }
+
 
 
 int main(void) {
@@ -207,9 +252,8 @@ int main(void) {
 	PORTB = 0x00;
 
 
-	PWM_on();
-    /* Insert DDR and PORT initializations */
-	
+//	PWM_on();
+		
     /* Insert your solution below */
     while (1) {
 
@@ -217,7 +261,7 @@ int main(void) {
 	    button2 = ~PINA & 0x02;
 	    button3 = ~PINA & 0x04;
 
-//	    OnOff();
+	    OnOff();
 	    UpDown();
 	    
 
